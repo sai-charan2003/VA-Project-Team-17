@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from sodapy import Socrata
 import plotly.express as px
+import numpy as np
 from urllib.request import urlopen
 import json
 
@@ -420,14 +421,28 @@ with tab4:
     st.write("Entrepreneurial expansion: prioritize areas where smoking correlates with high COPD burden.")
     
     st.subheader("Smoking vs COPD Correlation (Neighborhood Level)")
-    fig_scatter_t = px.scatter(
-        filtered_df.head(2000), x='Smoking_Prevalence', y='COPD_Prevalence',
-        size='Population (18+)', color='Estimated_Smokers',
-        hover_name='locationid', trendline="ols",
-        title="Smoking vs COPD Correlation (Neighborhoods)",
-        labels={'Smoking_Prevalence': 'Smoking (%)', 'COPD_Prevalence': 'COPD (%)'}
+    scatter_df = filtered_df.copy()
+    scatter_df = scatter_df.dropna(subset=['Smoking_Prevalence', 'COPD_Prevalence', 'Population (18+)'])
+    # Use all rows for full representation
+    fig_scatter = px.scatter(
+        scatter_df,
+        x='Smoking_Prevalence',
+        y='COPD_Prevalence',
+        size='Population (18+)',
+        color='Smoking_Prevalence',
+        color_continuous_scale="Oranges",
+        trendline="ols",
+        labels={
+            'Smoking_Prevalence': 'Smoking (%)',
+            'COPD_Prevalence': 'COPD (%)',
+            'Population (18+)': 'Population (18+)'
+        },
+        title="Higher Smoking Prevalence → Higher COPD Prevalence"
     )
-    st.plotly_chart(fig_scatter_t, use_container_width=True)
+    fig_scatter.update_coloraxes(colorbar_title="Smoking (%)")
+    fig_scatter.update_layout(legend_title_text="")
+    st.plotly_chart(fig_scatter, use_container_width=True)
+    st.caption("Each circle is a neighborhood tract. Circle size = population; color = smoking prevalence. The trendline shows the overall relationship.")
 
     st.subheader("COPD Burden Heat Map (Neighborhood Level)")
     st.info("Heat intensity shows COPD prevalence concentration across neighborhoods.")
