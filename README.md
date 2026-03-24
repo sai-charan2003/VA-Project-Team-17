@@ -12,7 +12,7 @@ A Streamlit app for exploring CDC PLACES data on cigarette smoking and COPD, wit
 ### 1. Clone the repository (if needed)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/sai-charan2003/VA-Project-Team-17.git
 cd Project1
 ```
 
