@@ -468,6 +468,7 @@ with tab2:
         
         - **Primary Focus:** High-density smoking areas in the **{top_reg_smk}**.
         - **Projected Impact:** Directly visible to an estimated **{reached_smokers_smk:,}** smokers.
+        - **Allocation Logic:** Billboards are proportional to regional smoker volume (e.g., a region with 24.4% of total smokers receives 244 out of 1,000 billboards).
         - **Advantage:** Simplest implementation for general awareness campaigns.
         """)
 
@@ -613,6 +614,7 @@ with tab4:
         - **Primary Focus:** High disease-burden areas in the **{top_reg_int}**.
         - **Reach Optimization:** Targets tracts with the highest concentration of smokers (estimated {reached_smokers_int:,} individuals).
         - **Risk Mitigation:** Prioritizes areas with significant COPD burden (targeting {int(reached_copd_int):,} high-risk individuals).
+        - **Allocation Logic:** Proportional distribution based on regional "Priority Score" (e.g., 24.4% of national risk results in 244 out of 1,000 billboards).
         """)
 
 # ==========================================
@@ -634,11 +636,18 @@ with st.expander("Data Methodology & Calculation Definitions"):
         - **Metric:** `Estimated Smokers`.
         - **Logic:** Rank-based selection targets the highest volume of tobacco users regardless of clinical history.
         - **Regional Share:** Determined by the total number of smokers in a region vs. the national total.
-        - **Regional Mapping:** States are categorized into four US Census Regions:
-            - **Northeast:** CT, ME, MA, NH, RI, VT, NJ, NY, PA
-            - **Midwest:** IL, IN, IA, KS, MI, MN, MO, NE, ND, OH, SD, WI
-            - **South:** AL, AR, DE, FL, GA, KY, LA, MD, MS, NC, OK, SC, TN, TX, VA, WV, DC
-            - **West:** AK, AZ, CA, CO, HI, ID, MT, NV, NM, OR, UT, WA, WY
+        - **Regional Mapping:** States are categorized into four US Census Regions (Northeast, Midwest, South, West).
+        
+        **Proportional Allocation Steps:**
+        1. **Sum Regional Scores:** The total priority score (or smoker count) is summed for each of the 4 US Census regions.
+        2. **Calculate Share:** `Regional Sum / National Total Sum`.
+        3. **Distribute Billboards:** `Share * Total Input Billboards`.
+        4. **Rounding Adjustment:** If rounding causes the total to miss the user's input, the remainder is assigned to the region with the single highest Priority Score to ensure exact totals.
+
+        **Step-by-Step Example (Allocation for 1,000 Billboards):**
+        1. **Regional Totals:** Sum estimated smokers for each region (e.g., Midwest = 6.1M; National Total = 25M).
+        2. **Compute Share:** Divide regional total by national total (e.g., 6.1M / 25M = 0.244).
+        3. **Final Count:** Multiply share by billboard budget (e.g., 0.244 * 1,000 = **244 billboards**).
         """)
 
     with m_tabs[2]:
@@ -658,6 +667,11 @@ with st.expander("Data Methodology & Calculation Definitions"):
             2. **Calculate Share:** `Regional Sum / National Total Sum`.
             3. **Distribute Billboards:** `Share * Total Input Billboards`.
             4. **Rounding Adjustment:** If rounding causes the total to miss the user's input, the remainder is assigned to the region with the single highest Priority Score to ensure exact totals.
+        
+        **Step-by-Step Example (Allocation for 1,000 Billboards):**
+        1. **Regional Totals:** Sum the Priority Score for each region (e.g., Midwest = 6,100; National Total = 25,000).
+        2. **Compute Share:** Divide regional total by national total (e.g., 6,100 / 25,000 = 0.244).
+        3. **Final Count:** Multiply share by billboard budget (e.g., 0.244 * 1,000 = **244 billboards**).
         """)
     
     st.caption("**Data Source:** CDC PLACES (2023 release). All demographic estimates are based on adults aged 18 and older.")
