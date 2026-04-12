@@ -5,6 +5,13 @@ import plotly.express as px
 import numpy as np
 from urllib.request import urlopen
 import json
+import plotly.io as pio
+
+# Set default Plotly template to match dark theme
+pio.templates.default = "plotly_dark"
+pio.templates["plotly_dark"].layout.font.family = "Google Sans Flex, sans-serif"
+pio.templates["plotly_dark"].layout.paper_bgcolor = "#09090b"
+pio.templates["plotly_dark"].layout.plot_bgcolor = "#09090b"
 
 # ==========================================
 # Configuration & Setup
@@ -34,6 +41,27 @@ st.markdown("""
     /* Make headers pop with the variable weight */
     h1, h2, h3 {
         font-variation-settings: "wght" 700, "opsz" 14;
+    }
+
+    /* Custom hover effects for interactive elements */
+    .stSelectbox:hover, .stSlider:hover, .stNumberInput:hover, .stRadio:hover {
+        border-color: #e4e4e7 !important;
+        transition: all 0.3s ease;
+    }
+
+    /* Premium card-like feel for sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #09090b !important;
+        border-right: 1px solid #1e1e2e;
+    }
+
+    /* Button hover state */
+    .stButton>button:hover {
+        border-color: #f4f4f5 !important;
+        color: #f4f4f5 !important;
+        background-color: rgba(255, 255, 255, 0.05) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -66,12 +94,13 @@ def fetch_and_prepare_data():
     # Optimization: Fetch only needed columns
     select_cols = "locationid, stateabbr, statedesc, countyname, countyfips, year, measureid, data_value, totalpop18plus, geolocation"
     
-    # Fetch Smoking Data
-    results_smoking = client.get("cwsq-ngmh", measureid="CSMOKING", select=select_cols, limit=100000)
+    # Increase limit to 1M to capture all US Census Tracts (~72,000 records)
+    # Note: Use a Socrata App Token for reliable fetching of large datasets
+    results_smoking = client.get("cwsq-ngmh", measureid="CSMOKING", select=select_cols, limit=1000000)
     df_smoking = pd.DataFrame.from_records(results_smoking)
     
     # Fetch COPD Data
-    results_copd = client.get("cwsq-ngmh", measureid="COPD", select=select_cols, limit=100000)
+    results_copd = client.get("cwsq-ngmh", measureid="COPD", select=select_cols, limit=1000000)
     df_copd = pd.DataFrame.from_records(results_copd)
     
     if df_smoking.empty or df_copd.empty:
@@ -108,7 +137,7 @@ def fetch_and_prepare_data():
     wider_df = wide_df.rename(columns={'totalpop18plus': 'Population (18+)'})
     
     # Calculate Metrics
-    # Estimated Smokers = Population (18+) × Smoking Prevalence (as fraction)
+    # Estimated Smokers = Population (18+) * Smoking Prevalence (as fraction)
     wider_df['Estimated_Smokers'] = (wider_df['Population (18+)'] * (wider_df['Smoking_Prevalence'] / 100)).astype(int)
     
     # Overlap Score highlights areas where both smoking and COPD are high
@@ -138,7 +167,124 @@ def fetch_and_prepare_data():
     # Ensure year is numeric for filtering and sorting
     wider_df['year'] = pd.to_numeric(wider_df['year'], errors='coerce')
     
+    # Region Mapping
+    region_map = {
+        'CT': 'Northeast', 'ME': 'Northeast', 'MA': 'Northeast', 'NH': 'Northeast', 'RI': 'Northeast', 'VT': 'Northeast',
+        'NJ': 'Northeast', 'NY': 'Northeast', 'PA': 'Northeast',
+        'IL': 'Midwest', 'IN': 'Midwest', 'IA': 'Midwest', 'KS': 'Midwest', 'MI': 'Midwest', 'MN': 'Midwest',
+        'MO': 'Midwest', 'NE': 'Midwest', 'ND': 'Midwest', 'OH': 'Midwest', 'SD': 'Midwest', 'WI': 'Midwest',
+        'AL': 'South', 'AR': 'South', 'DE': 'South', 'FL': 'South', 'GA': 'South', 'KY': 'South', 'LA': 'South',
+        'MD': 'South', 'MS': 'South', 'NC': 'South', 'OK': 'South', 'SC': 'South', 'TN': 'South', 'TX': 'South',
+        'VA': 'South', 'WV': 'South', 'DC': 'South',
+        'AK': 'West', 'AZ': 'West', 'CA': 'West', 'CO': 'West', 'HI': 'West', 'ID': 'West', 'MT': 'West',
+        'NV': 'West', 'NM': 'West', 'OR': 'West', 'UT': 'West', 'WA': 'West', 'WY': 'West'
+    }
+    wider_df['Region'] = wider_df['stateabbr'].map(region_map).fillna('Other')
+    
+    # Priority Score for Strategy (Reach * Risk Factor)
+    wider_df['priority_score'] = (wider_df['Estimated_Smokers'] * (wider_df['COPD_Prevalence'] / 100)).round(2)
+    
     return wider_df
+
+# ==========================================
+# Strategy Helper Functions
+# ==========================================
+def run_billboard_allocation(base_df, total_billboards, priority_metric="priority_score"):
+    """
+    Allocates billboards based on a given metric across regions and then identifies top tracts.
+    """
+    if base_df.empty:
+        return pd.DataFrame(), pd.DataFrame(), 0
+        
+    # Step 1: Regional Allocation
+    regional_data = base_df.groupby('Region')[priority_metric].sum().reset_index()
+    total_metric_sum = regional_data[priority_metric].sum()
+    
+    if total_metric_sum > 0:
+        regional_data['share'] = regional_data[priority_metric] / total_metric_sum
+        regional_data['billboards'] = (regional_data['share'] * total_billboards).round().astype(int)
+        
+        # Rounding adjustment to match total_billboards
+        diff = total_billboards - regional_data['billboards'].sum()
+        if diff != 0:
+            idx = regional_data[priority_metric].idxmax()
+            regional_data.at[idx, 'billboards'] += diff
+    else:
+        regional_data['billboards'] = 0
+
+    # Step 2: Within Each Region - Select Top Tracts
+    selected_locations_list = []
+    active_regions = regional_data[regional_data['billboards'] > 0]['Region'].tolist()
+    
+    for reg in active_regions:
+        n_billboards = regional_data[regional_data['Region'] == reg]['billboards'].values[0]
+        reg_df = base_df[base_df['Region'] == reg].sort_values(by=priority_metric, ascending=False).head(n_billboards)
+        selected_locations_list.append(reg_df)
+    
+    final_df = pd.concat(selected_locations_list) if selected_locations_list else pd.DataFrame()
+    
+    return regional_data, final_df, total_metric_sum
+
+def display_strategy_ui(regional_data, final_selected_df, total_billboards, filtered_df, strategy_name, selected_state, show_copd=True):
+    """
+    Renders the consistent UI for billboard strategies.
+    """
+    col_summary, col_map = st.columns([1, 2])
+    
+    with col_summary:
+        st.subheader("Regional Allocation")
+        st.dataframe(regional_data[regional_data['billboards'] > 0][['Region', 'billboards']], hide_index=True, use_container_width=True)
+        
+        if not final_selected_df.empty:
+            st.subheader("Strategic Impact Summary")
+            total_smokers_view = filtered_df['Estimated_Smokers'].sum()
+            reached_smokers = final_selected_df['Estimated_Smokers'].sum()
+            p_smokers = (reached_smokers / total_smokers_view * 100) if total_smokers_view > 0 else 0
+            
+            st.metric("Total Smokers Targeted", f"{reached_smokers:,}", help="The estimated number of smokers reached by the proposed billboard allocation.")
+            st.caption(f"{p_smokers:.2f}% of current selection reach")
+            
+            if show_copd:
+                total_copd_raw = (filtered_df['Population (18+)'] * (filtered_df['COPD_Prevalence'] / 100)).sum()
+                reached_copd = (final_selected_df['Population (18+)'] * (final_selected_df['COPD_Prevalence'] / 100)).sum()
+                p_copd = (reached_copd / total_copd_raw * 100) if total_copd_raw > 0 else 0
+                
+                st.metric("COPD Patients Reached", f"{int(reached_copd):,}", help="The estimated number of COPD patients reached by the proposed billboard allocation.")
+                st.caption(f"{p_copd:.2f}% of current selection risk burden")
+
+    with col_map:
+        st.subheader("Billboard Locations Map")
+        if not final_selected_df.empty:
+            hover_items = ["countyname", "stateabbr", "Estimated_Smokers"]
+            if show_copd:
+                hover_items.append("COPD_Prevalence")
+                
+            fig_map = px.scatter_mapbox(
+                final_selected_df, lat="lat", lon="lon",
+                size="Estimated_Smokers" if not show_copd else "priority_score", 
+                color="Region",
+                hover_name="locationid", 
+                hover_data=hover_items,
+                zoom=3 if selected_state == "All" else 7,
+                mapbox_style="carto-positron",
+                title=f"Targeted Zones: {strategy_name}",
+                size_max=18
+            )
+            fig_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
+            st.plotly_chart(fig_map, use_container_width=True)
+        else:
+            st.info("No locations selected. Adjust filters or billboard count.")
+
+    st.subheader("Recommended Locations (Detailed Table)")
+    if not final_selected_df.empty:
+        display_cols = ['locationid', 'countyname', 'stateabbr', 'Region', 'Estimated_Smokers']
+        if show_copd:
+            display_cols.extend(['COPD_Prevalence', 'priority_score'])
+            
+        st.dataframe(
+            final_selected_df[display_cols].sort_values(by=display_cols[-1], ascending=False),
+            use_container_width=True, hide_index=True
+        )
 
 # Load Data
 county_geojson = load_county_geojson()
@@ -156,7 +302,7 @@ if raw_tract_df.empty:
 # Sidebar Filters
 st.sidebar.header("Geography Filters")
 all_states = sorted(raw_tract_df['stateabbr'].unique())
-selected_state = st.sidebar.selectbox("Select State", options=["All"] + all_states)
+selected_state = st.sidebar.selectbox("Select State", options=["All"] + all_states, help="Filter data by a specific U.S. State.")
 
 # Year Filter (default to latest available year)
 available_years = sorted(raw_tract_df['year'].dropna().unique())
@@ -164,19 +310,16 @@ default_year = max(available_years) if available_years else None
 selected_year = st.sidebar.selectbox(
     "Select Year",
     options=available_years,
-    index=available_years.index(default_year) if default_year in available_years else 0
+    index=available_years.index(default_year) if default_year in available_years else 0,
+    help="Filter results by the available CDC data reporting year."
 )
 
-st.sidebar.header("Ranking Preference")
-rank_metric = st.sidebar.selectbox(
-    "Rank By",
-    options=["Estimated Smokers (Reach)", "Smoking Prevalence (%)"]
-)
+
 
 if selected_state != "All":
     state_filtered = raw_tract_df[raw_tract_df['stateabbr'] == selected_state]
     all_counties = sorted(state_filtered['countyname'].unique())
-    selected_county = st.sidebar.selectbox("Select County", options=["All"] + all_counties)
+    selected_county = st.sidebar.selectbox("Select County", options=["All"] + all_counties, help="Filter results by a specific county within the selected state.")
 else:
     state_filtered = raw_tract_df
     selected_county = "All"
@@ -201,222 +344,138 @@ if selected_county != "All":
 # ==========================================
 # Main Layout
 # ==========================================
-st.title("Public Health Billboard Strategy: Anti-Smoking")
+st.title("HealthLens: Anti-Smoking Billboard Strategy")
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "Neighborhood Deep Dive (Tracts)", 
-    "County Level Targeting", 
-    "State Level Overview",
-    "Phase 2: Health ROI (COPD)"
+    "Smoking and Population", 
+    "Smoking-Only Strategy", 
+    "COPD vs Smoking Relation", 
+    "Strategy: Tobacco and COPD"
 ])
 
 # ------------------------------------------
-# TAB 1: Neighborhood Deep Dive (Census Tract Level)
+# ------------------------------------------
+# TAB 1: Smoking & Population (18+)
 # ------------------------------------------
 with tab1:
-    st.header("Neighborhood Deep Dive (Census Tracts)")
-    st.write("Precision targeting for community-level billboard placement using census tract data.")
+    st.header("Smoking Concentration Map")
+    st.write("Drill down from national state-level trends to specific neighborhood hotspots.")
     
-    # Use the LocationID column which represents census tracts
-    tract_df = filtered_df.copy()
-    # Sort by selected ranking metric
-    tract_sort_col = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    tract_df = tract_df.sort_values(by=tract_sort_col, ascending=False)
-    # Filter tracts with no population or zero smokers to clean up report
-    tract_df = tract_df[tract_df['Estimated_Smokers'] > 0]
-    tract_df['Rank'] = range(1, len(tract_df) + 1)
+    # Unified Granularity Selector
+    map_res_1 = st.radio("Resolution Level", ["State", "County", "Census Tract"], horizontal=True, key="map_res_1", help="Toggle between State, County, or Census Tract (Neighborhood) map views.")
     
-    st.subheader(f"Ranked Census Tracts — {rank_metric}")
-    st.dataframe(
-        # Columns: Rank, State, County, LocationID (Census tract), Smoking prevalence percent, Population (18+), Estimated smokers
-        tract_df[['Rank', 'stateabbr', 'countyname', 'locationid', 'Smoking_Prevalence', 'Population (18+)', 'Estimated_Smokers']],
-        use_container_width=True, hide_index=True
-    )
-    
-    # Top-N tracts bar chart for clear prioritization
-    tract_top_n = st.slider("Top N Tracts", min_value=5, max_value=50, value=15, step=5)
-    tract_top = tract_df.head(tract_top_n).copy()
-    tract_metric = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    tract_title = "Top Tracts by Estimated Smokers (Reach)" if tract_metric == 'Estimated_Smokers' else "Top Tracts by Smoking Prevalence (%)"
-    tract_top['tract_label'] = tract_top['countyname'] + " • " + tract_top['locationid'].astype(str)
-    fig_tract_bar = px.bar(
-        tract_top,
-        x=tract_metric,
-        y='tract_label',
-        color='stateabbr',
-        orientation='h',
-        title=tract_title,
-        labels={tract_metric: rank_metric, 'tract_label': 'Tract (County • ID)'},
-        hover_data=['countyname', 'stateabbr', 'Smoking_Prevalence', 'Estimated_Smokers']
-    )
-    fig_tract_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_tract_bar, use_container_width=True)
-    
-    st.subheader("Neighborhood Smoking Density (Heat Map)")
-    st.info("Showing concentration of smoking prevalence across all neighborhoods.")
-    
-    # Neighborhood Density Heatmap (High Performance for all tracts)
-    heat_metric = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    heat_title = "High-Resolution Reach Hotspots" if heat_metric == 'Estimated_Smokers' else "High-Resolution Smoking Prevalence Hotspots"
-    fig_neighborhood_map = px.density_mapbox(
-        tract_df, 
-        lat="lat", lon="lon",
-        z=heat_metric,
-        radius=10,
-        center=dict(lat=tract_df['lat'].mean(), lon=tract_df['lon'].mean()) if not tract_df.empty else None,
-        zoom=4 if selected_state == "All" else 6,
-        mapbox_style="carto-positron",
-        color_continuous_scale="YlOrRd",
-        hover_name="locationid",
-        hover_data=["countyname", "Smoking_Prevalence", "Estimated_Smokers"],
-        title=heat_title
-    )
-    fig_neighborhood_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
-    st.plotly_chart(fig_neighborhood_map, use_container_width=True)
+    # Map Logic
+    if map_res_1 == "State":
+        s_src = year_filtered_df.copy()
+        s_src['Smoking_Weighted'] = s_src['Smoking_Prevalence'] * s_src['Population (18+)']
+        s_agg = s_src.groupby(['stateabbr']).agg({
+            'Population (18+)': 'sum', 'Smoking_Weighted': 'sum', 'Estimated_Smokers': 'sum'
+        }).reset_index()
+        s_agg['Smoking_Prevalence'] = (s_agg['Smoking_Weighted'] / s_agg['Population (18+)']).round(2)
+        
+        f_map = px.choropleth(
+            s_agg, locations='stateabbr', locationmode="USA-states",
+            color='Smoking_Prevalence', scope="usa", color_continuous_scale="YlOrRd",
+            title="USA State Overview: Avg Smoking Prevalence (%)",
+            hover_data=['Estimated_Smokers', 'Population (18+)']
+        )
+        d_df = s_agg
+        d_lbl = "State"
+        s_col = 'Smoking_Prevalence'
 
-    st.caption("Tip: Switch the Rank By control in the sidebar to compare prevalence vs reach.")
+    elif map_res_1 == "County":
+        c_src = filtered_df.copy()
+        c_src['Smoking_Weighted'] = c_src['Smoking_Prevalence'] * c_src['Population (18+)']
+        c_agg = c_src.groupby(['stateabbr', 'countyname', 'countyfips']).agg({
+            'Population (18+)': 'sum', 'Smoking_Weighted': 'sum', 'Estimated_Smokers': 'sum'
+        }).reset_index()
+        c_agg['Smoking_Prevalence'] = (c_agg['Smoking_Weighted'] / c_agg['Population (18+)']).round(2)
+        
+        f_map = px.choropleth(
+            c_agg, geojson=county_geojson, locations='countyfips',
+            color='Smoking_Prevalence', color_continuous_scale="YlOrRd",
+            scope="usa", title=f"County View: {selected_state if selected_state != 'All' else 'National'} Breakdown",
+            hover_name='countyname', hover_data=['stateabbr', 'Estimated_Smokers']
+        )
+        if selected_state != "All":
+            f_map.update_geos(fitbounds="locations", visible=False)
+        d_df = c_agg
+        d_lbl = "County"
+        s_col = 'Smoking_Prevalence'
+
+    else:  # Census Tract
+        t_df = filtered_df.copy()
+        f_map = px.density_mapbox(
+            t_df, lat="lat", lon="lon", z="Smoking_Prevalence", radius=10,
+            center=dict(lat=t_df['lat'].mean(), lon=t_df['lon'].mean()) if not t_df.empty else None,
+            zoom=4 if selected_state == "All" else 7, mapbox_style="carto-positron",
+            color_continuous_scale="YlOrRd", title="Neighborhood Precision Heatmap (Tract Level)",
+            hover_name="locationid", hover_data=["countyname", "Smoking_Prevalence", "Estimated_Smokers"]
+        )
+        f_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
+        d_df = t_df
+        d_lbl = "Tract"
+        s_col = 'Smoking_Prevalence'
+
+    st.plotly_chart(f_map, use_container_width=True)
+
+    # Coordinated Ranking and Data
+    st.divider()
+    t_n = st.slider(f"Top {d_lbl}s Ranking", 10, 50, 15, key="t_n_1", help="Adjust the number of top-ranked locations to display in the chart below.")
+    top_d = d_df.sort_values(by=s_col, ascending=False).head(t_n)
+    
+    if map_res_1 == "Census Tract":
+        top_d['label'] = top_d['countyname'] + " (" + top_d['locationid'].astype(str) + ")"
+    elif map_res_1 == "County":
+        top_d['label'] = top_d['countyname'] + ", " + top_d['stateabbr']
+    else:
+        top_d['label'] = top_d['stateabbr']
+
+    f_bar = px.bar(
+        top_d, x=s_col, y='label', orientation='h',
+        title=f"High Risk {d_lbl}s: Top {t_n} by Prevalence",
+        labels={s_col: "Smoking (%)", "label": d_lbl},
+        color=s_col, color_continuous_scale="Reds"
+    )
+    f_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
+    st.plotly_chart(f_bar, use_container_width=True)
+
+    st.subheader(f"{d_lbl} Level Intelligence")
+    st.dataframe(d_df.sort_values(by=s_col, ascending=False), use_container_width=True, hide_index=True)
+
 
 # ------------------------------------------
-# TAB 2: County Level Targeting
+# TAB 2: Smoking-Only Strategy
 # ------------------------------------------
 with tab2:
-    st.header("County Level Targeting")
-    st.write("Identify counties with the largest absolute number of smokers to maximize billboard reach.")
-    
-    # Aggregate data by State and County
-    # Use population-weighted prevalence so percentages reflect total 18+ population
-    county_src = filtered_df.copy()
-    county_src['Smoking_Weighted'] = county_src['Smoking_Prevalence'] * county_src['Population (18+)']
-    county_src['COPD_Weighted'] = county_src['COPD_Prevalence'] * county_src['Population (18+)']
-    county_agg = county_src.groupby(['stateabbr', 'countyname', 'countyfips']).agg({
-        'Population (18+)': 'sum',
-        'Smoking_Weighted': 'sum',
-        'COPD_Weighted': 'sum',
-        'Estimated_Smokers': 'sum',
-        'Overlap_Score': 'mean'
-    }).reset_index()
-    county_agg['Smoking_Prevalence'] = county_agg['Smoking_Weighted'] / county_agg['Population (18+)']
-    county_agg['COPD_Prevalence'] = county_agg['COPD_Weighted'] / county_agg['Population (18+)']
-    county_agg.drop(columns=['Smoking_Weighted', 'COPD_Weighted'], inplace=True)
-    
-    # Sort by selected ranking metric
-    county_sort_col = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    county_agg = county_agg.sort_values(by=county_sort_col, ascending=False)
-    county_agg['Rank'] = range(1, len(county_agg) + 1)
-    
-    st.subheader(f"Ranked Recommended Counties — {rank_metric}")
-    st.dataframe(
-        county_agg[['Rank', 'stateabbr', 'countyname', 'Smoking_Prevalence', 'Population (18+)', 'Estimated_Smokers']],
-        use_container_width=True, hide_index=True
-    )
+    st.header("Smoking-Only Placement Strategy")
+    st.write("Allocation based purely on the volume of current smokers, ignoring other health complications.")
 
-    # Top-N bar chart for clear prioritization
-    top_n = st.slider("Top N Counties", min_value=5, max_value=50, value=10, step=5)
-    county_top = county_agg.head(top_n).copy()
-    bar_metric = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    bar_title = "Top Counties by Estimated Smokers (Reach)" if bar_metric == 'Estimated_Smokers' else "Top Counties by Smoking Prevalence (%)"
-    fig_bar = px.bar(
-        county_top,
-        x=bar_metric,
-        y='countyname',
-        color='stateabbr',
-        orientation='h',
-        title=bar_title,
-        labels={bar_metric: rank_metric, 'countyname': 'County'}
-    )
-    fig_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_bar, use_container_width=True)
-    
-    st.subheader("Regional Smoker Distribution")
-    # Choropleth restricted to selected state or whole US
-    map_metric = county_sort_col
-    map_title = "Estimated Smokers by County" if map_metric == 'Estimated_Smokers' else "Smoking Prevalence by County"
-    fig_map = px.choropleth(
-        county_agg,
-        geojson=county_geojson,
-        locations='countyfips',
-        color=map_metric,
-        color_continuous_scale="YlOrRd",
-        scope="usa",
-        hover_name='countyname',
-        hover_data=['Smoking_Prevalence', 'Estimated_Smokers'],
-        title=map_title
-    )
-    if selected_state != "All":
-        fig_map.update_geos(fitbounds="locations", visible=False)
+    smk_billboards = st.number_input("Total Number of Billboards", min_value=1, max_value=100000, value=1000, step=100, key="smk_bill_input", help="Enter the total number of billboards to be allocated based on smoker volume.")
+
+    # Calculate using Estimated_Smokers only
+    reg_data_smk, final_df_smk, _ = run_billboard_allocation(filtered_df, smk_billboards, priority_metric="Estimated_Smokers")
+
+    # Display UI - Explicitly hide COPD
+    display_strategy_ui(reg_data_smk, final_df_smk, smk_billboards, filtered_df, "Smoker Volume Priority", selected_state, show_copd=False)
+
+    if not final_df_smk.empty:
+        st.info("**Strategy Recommendation (Smoking-Only):**")
+        top_reg_smk = reg_data_smk.loc[reg_data_smk['billboards'].idxmax(), 'Region'] if not reg_data_smk.empty else "N/A"
+        reached_smokers_smk = final_df_smk['Estimated_Smokers'].sum()
+        st.markdown(f"""
+        This strategy focuses exclusively on high-volume environments. It distributes **{smk_billboards} billboards** primarily based on population density and smoking prevalence.
         
-    st.plotly_chart(fig_map, use_container_width=True)
- 
-    st.caption("Use this map to see where billboard reach is largest by county.")
+        - **Primary Focus:** High-density smoking areas in the **{top_reg_smk}**.
+        - **Projected Impact:** Directly visible to an estimated **{reached_smokers_smk:,}** smokers.
+        - **Advantage:** Simplest implementation for general awareness campaigns.
+        """)
+
 
 # ------------------------------------------
-# TAB 3: State Level Overview
+# TAB 3: COPD vs Smoking Relation
 # ------------------------------------------
 with tab3:
-    st.header("National State Overview")
-    st.write("High-level patterns of tobacco use across the United States.")
-    
-    # Aggregate data by State
-    # Use population-weighted prevalence so percentages reflect total 18+ population
-    state_src = year_filtered_df.copy()
-    state_src['Smoking_Weighted'] = state_src['Smoking_Prevalence'] * state_src['Population (18+)']
-    state_agg = state_src.groupby(['stateabbr']).agg({
-        'Population (18+)': 'sum',
-        'Smoking_Weighted': 'sum',
-        'Estimated_Smokers': 'sum',
-        'Overlap_Score': 'mean'
-    }).reset_index()
-    state_agg['Smoking_Prevalence'] = state_agg['Smoking_Weighted'] / state_agg['Population (18+)']
-    state_agg.drop(columns=['Smoking_Weighted'], inplace=True)
-    
-    
-    state_sort_col = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    state_agg = state_agg.sort_values(by=state_sort_col, ascending=False)
-    state_agg['Rank'] = range(1, len(state_agg) + 1)
-    
-    
-    st.subheader("State Ranking by Reach")
-    st.dataframe(
-        state_agg[['Rank', 'stateabbr', 'Smoking_Prevalence', 'Population (18+)', 'Estimated_Smokers']],
-        use_container_width=True, hide_index=True
-    )
-
-    # Top-N states bar chart for clear prioritization
-    state_top_n = st.slider("Top N States", min_value=5, max_value=50, value=15, step=5)
-    state_top = state_agg.head(state_top_n).copy()
-    state_metric = 'Estimated_Smokers' if rank_metric.startswith("Estimated") else 'Smoking_Prevalence'
-    state_title = "Top States by Estimated Smokers (Reach)" if state_metric == 'Estimated_Smokers' else "Top States by Smoking Prevalence (%)"
-    fig_state_bar = px.bar(
-        state_top,
-        x=state_metric,
-        y='stateabbr',
-        orientation='h',
-        title=state_title,
-        labels={state_metric: rank_metric, 'stateabbr': 'State'}
-    )
-    fig_state_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_state_bar, use_container_width=True)
-    
-    st.subheader("Smoking Prevalence by State")
-    state_map_title = "Estimated Smokers by State" if state_sort_col == 'Estimated_Smokers' else "Avg Smoking Prevalence %"
-    fig_us_map = px.choropleth(
-        state_agg,
-        locations='stateabbr',
-        locationmode="USA-states",
-        color=state_sort_col,
-        scope="usa",
-        color_continuous_scale="Reds",
-        title=state_map_title
-    )
-    st.plotly_chart(fig_us_map, use_container_width=True)
-    
-
-    st.caption("State overview reflects the selected year only.")
-
-# ------------------------------------------
-# TAB 4: Phase 2 - Health ROI (COPD)
-# ------------------------------------------
-with tab4:
     st.header("Phase 2: Health ROI (COPD)")
     st.write("Entrepreneurial expansion: prioritize areas where smoking correlates with high COPD burden.")
     
@@ -437,7 +496,7 @@ with tab4:
             'COPD_Prevalence': 'COPD (%)',
             'Population (18+)': 'Population (18+)'
         },
-        title="Higher Smoking Prevalence → Higher COPD Prevalence"
+        title="Higher Smoking Prevalence -> Higher COPD Prevalence"
     )
     fig_scatter.update_coloraxes(colorbar_title="Smoking (%)")
     fig_scatter.update_layout(legend_title_text="")
@@ -478,7 +537,7 @@ with tab4:
         color_continuous_scale="Magma",
         hover_name="locationid",
         hover_data=["countyname", "Smoking_Prevalence", "COPD_Prevalence", "Estimated_Smokers"],
-        title="Co-Occurrence Hotspots (Smoking × COPD)"
+        title="Co-Occurrence Hotspots (Smoking x COPD)"
     )
     fig_overlap_heat.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
     st.plotly_chart(fig_overlap_heat, use_container_width=True)
@@ -511,7 +570,7 @@ with tab4:
     )
 
     # Top-N bar chart for high-risk counties
-    risk_top_n = st.slider("Top N High-Risk Counties", min_value=5, max_value=50, value=15, step=5)
+    risk_top_n = st.slider("Top N High-Risk Counties", min_value=5, max_value=50, value=15, step=5, help="Select the number of high-risk counties to display in the ranking below.")
     risk_top = risk_agg.head(risk_top_n).copy()
     risk_top['county_label'] = risk_top['countyname'] + ", " + risk_top['stateabbr']
     fig_risk_bar = px.bar(
@@ -526,15 +585,79 @@ with tab4:
     fig_risk_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
     st.plotly_chart(fig_risk_bar, use_container_width=True)
 
+
+# ------------------------------------------
+# TAB 4: Smoking + COPD Strategy
+# ------------------------------------------
+with tab4:
+    st.header("Integrated Strategy (Smoking + COPD)")
+    st.write("Optimized allocation prioritizing high smoking rates where COPD burden is also significant.")
+
+    total_billboards = st.number_input("Total Number of Billboards", min_value=1, max_value=100000, value=1000, step=100, key="total_bill_input", help="Enter the total number of billboards for the integrated risk-based strategy.")
+
+    # Calculate using priority_score (Smokers * COPD Factor)
+    reg_data_int, final_df_int, _ = run_billboard_allocation(filtered_df, total_billboards, priority_metric="priority_score")
+
+    # Display UI
+    display_strategy_ui(reg_data_int, final_df_int, total_billboards, filtered_df, "Health ROI Priority", selected_state)
+
+    if not final_df_int.empty:
+        st.info("**Strategy Recommendation (Integrated):**")
+        top_reg_int = reg_data_int.loc[reg_data_int['billboards'].idxmax(), 'Region'] if not reg_data_int.empty else "N/A"
+        reached_smokers_int = final_df_int['Estimated_Smokers'].sum()
+        reached_copd_int = (final_df_int['Population (18+)'] * (final_df_int['COPD_Prevalence'] / 100)).sum()
+        
+        st.markdown(f"""
+        This strategy distributes **{total_billboards} billboards** using an ROI model that mitigates clinical risk.
+        
+        - **Primary Focus:** High disease-burden areas in the **{top_reg_int}**.
+        - **Reach Optimization:** Targets tracts with the highest concentration of smokers (estimated {reached_smokers_int:,} individuals).
+        - **Risk Mitigation:** Prioritizes areas with significant COPD burden (targeting {int(reached_copd_int):,} high-risk individuals).
+        """)
+
 # ==========================================
 # Footer & Methodology
 # ==========================================
 st.markdown("---")
-with st.expander("Data Methodology & Column Definitions"):
-    st.markdown("""
-    - **Estimated Smokers:** `18+ Population * (Smoking Prevalence / 100)`
-    - **Overlap Score:** `Smoking Prevalence * COPD Prevalence` -> Highlights co-occurrence hotspots.
-    - **Risk-Adjusted Reach:** `Estimated Smokers * (COPD Prevalence / 100)` -> Prioritizes high-reach areas with higher COPD burden.
-    - **Data Source:** CDC PLACES (2023 release).
-    - **Demographic:** Estimates are strictly based on adults aged 18 and older.
-    """)
+with st.expander("Data Methodology & Calculation Definitions"):
+    m_tabs = st.tabs(["Tab 1: Overview", "Tab 2: Smoker Strategy", "Tab 3: COPD ROI", "Tab 4: Integrated Strategy"])
+    
+    with m_tabs[0]:
+        st.markdown("""
+        **Core Definitions:**
+        - **Estimated Smokers:** `18+ Population * (Smoking Prevalence / 100)`. This represents the absolute count of smokers in a given area (Tract, County, or State).
+        """)
+
+    with m_tabs[1]:
+        st.markdown("""
+        **Smoker-Only Allocation:**
+        - **Metric:** `Estimated Smokers`.
+        - **Logic:** Rank-based selection targets the highest volume of tobacco users regardless of clinical history.
+        - **Regional Share:** Determined by the total number of smokers in a region vs. the national total.
+        - **Regional Mapping:** States are categorized into four US Census Regions:
+            - **Northeast:** CT, ME, MA, NH, RI, VT, NJ, NY, PA
+            - **Midwest:** IL, IN, IA, KS, MI, MN, MO, NE, ND, OH, SD, WI
+            - **South:** AL, AR, DE, FL, GA, KY, LA, MD, MS, NC, OK, SC, TN, TX, VA, WV, DC
+            - **West:** AK, AZ, CA, CO, HI, ID, MT, NV, NM, OR, UT, WA, WY
+        """)
+
+    with m_tabs[2]:
+        st.markdown("""
+        **Risk Metrics:**
+        - **Risk-Adjusted Reach (RAR):** `Estimated Smokers * (COPD Prevalence / 100)`.
+        - **Co-Occurrence Index:** `Smoking Prevalence * COPD Prevalence`. Identifies "Dual-Burden" hotspots.
+        - **Trendline (OLS):** Uses Ordinary Least Squares to map the relationship between behavioral risk and health outcomes.
+        """)
+    
+    with m_tabs[3]:
+        st.markdown("""
+        **Integrated Allocation Logic:**
+        - **Priority Score:** `Estimated Smokers * (COPD Prevalence / 100)`.
+        - **Proportional Allocation Steps:**
+            1. **Sum Regional Scores:** The total priority score (or smoker count) is summed for each of the 4 US Census regions.
+            2. **Calculate Share:** `Regional Sum / National Total Sum`.
+            3. **Distribute Billboards:** `Share * Total Input Billboards`.
+            4. **Rounding Adjustment:** If rounding causes the total to miss the user's input, the remainder is assigned to the region with the single highest Priority Score to ensure exact totals.
+        """)
+    
+    st.caption("**Data Source:** CDC PLACES (2023 release). All demographic estimates are based on adults aged 18 and older.")

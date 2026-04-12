@@ -4,3 +4,5 @@ sodapy
 plotly
 statsmodels
 numpy
+matplotlib
+seaborn
