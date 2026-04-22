@@ -1,66 +1,17 @@
-# HealthLens – Public Health Anti-Smoking AI Strategy
+# HealthLens: Anti-Smoking AI Strategy Dashboard (Team 17)
 
-A Streamlit app for exploring CDC PLACES data on cigarette smoking and COPD, with maps and visualizations.
+## Project Description
+HealthLens is a data-driven Streamlit application built for a simulated Public Health Marketing Agency. The goal of the dashboard is to use real health data from the CDC (PLACES) to identify geographic hotspots with high tobacco use and COPD prevalence. The tool provides interactive mapping, strategic budget allocation models, and a Gemini AI integration that dynamically generates context-aware billboard taglines and evaluates billboard design concepts to optimize public health marketing campaigns.
 
-## Prerequisites
+## App Deployment URL
 
-- **Python 3.8+**
-- **pip** (Python package manager)
+[https://va-project-team-17-6u7xqqzeeabkygihamdgj7.streamlit.app/](https://va-project-team-17-6u7xqqzeeabkygihamdgj7.streamlit.app/)
 
-## Running the app
-
-### 1. Clone the repository (if needed)
+## Local Setup Instructions
 
 ```bash
 git clone https://github.com/sai-charan2003/VA-Project-Team-17.git
-cd Project1
+cd VA-Project-Team-17
+uv sync
+uv run streamlit run app.py
 ```
-
-### 2. Create a virtual environment (recommended)
-
-```bash
-python3 -m venv venv
-```
-
-Activate it:
-
-- **macOS / Linux:** `source venv/bin/activate`
-- **Windows:** `venv\Scripts\activate`
-
-### 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Start the app
-
-```bash
-streamlit run app.py
-```
-
-The app will open in your browser at **http://localhost:8501**. If it doesn’t, open that URL manually.
-
-## Quick run (if dependencies are already installed)
-
-```bash
-streamlit run app.py
-```
-
-## Project structure
-
-| File / folder      | Description                          |
-|--------------------|--------------------------------------|
-| `app.py`           | Main Streamlit application           |
-| `requirements.txt` | Python dependencies                  |
-| `.streamlit/`      | Streamlit config (e.g. theme)        |
-| `venv/`            | Virtual environment (do not commit)  |
-
-## Dependencies
-
-- **streamlit** – Web app framework  
-- **pandas** – Data handling  
-- **sodapy** – CDC Socrata API client  
-- **plotly** – Interactive charts and maps  
-- **statsmodels** – Statistical analysis  
-- **numpy** – Numerical operations  
