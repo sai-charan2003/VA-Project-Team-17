@@ -429,24 +429,34 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
         st.caption("Tagline generated based on local health data for this specific tract.")
 
     # Handle map click -> show billboard popup
+    map_state_key = f"last_map_sel_{map_key}"
+    if map_state_key not in st.session_state:
+        st.session_state[map_state_key] = None
+
     if map_event and not final_selected_df.empty:
         selection = map_event.get("selection", {})
         raw_points = selection.get("points", [])
         
         if raw_points:
-            first_pt = raw_points[0]
-            pt_idx = first_pt.get("point_index", None)
-            trace_idx = first_pt.get("curve_number", 0)
-
-            # Reconstruct the original row from the grouped data
-            regions_in_order = final_selected_df['Region'].unique().tolist()
-            if trace_idx < len(regions_in_order):
-                target_region = regions_in_order[trace_idx]
-                region_subset = final_selected_df[final_selected_df['Region'] == target_region].reset_index(drop=True)
+            current_map_sel = str(raw_points)
+            if current_map_sel != st.session_state[map_state_key]:
+                st.session_state[map_state_key] = current_map_sel
                 
-                if pt_idx is not None and pt_idx < len(region_subset):
-                    clicked_row = region_subset.iloc[pt_idx]
-                    show_popup(clicked_row)
+                first_pt = raw_points[0]
+                pt_idx = first_pt.get("point_index", None)
+                trace_idx = first_pt.get("curve_number", 0)
+
+                # Reconstruct the original row from the grouped data
+                regions_in_order = final_selected_df['Region'].unique().tolist()
+                if trace_idx < len(regions_in_order):
+                    target_region = regions_in_order[trace_idx]
+                    region_subset = final_selected_df[final_selected_df['Region'] == target_region].reset_index(drop=True)
+                    
+                    if pt_idx is not None and pt_idx < len(region_subset):
+                        clicked_row = region_subset.iloc[pt_idx]
+                        show_popup(clicked_row)
+        else:
+            st.session_state[map_state_key] = None
 
     st.subheader("Recommended Locations (Detailed Table)")
     st.caption("Tip: Select any row in the table below to generate a billboard tagline for that location.")
@@ -467,11 +477,21 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
         )
         
         # Handle table click -> show billboard popup
+        table_state_key = f"last_table_sel_{map_key}"
+        if table_state_key not in st.session_state:
+            st.session_state[table_state_key] = None
+
         if event and len(event.selection.rows) > 0:
-            selected_idx = event.selection.rows[0]
-            loc_id = table_df.iloc[selected_idx]['locationid']
-            full_row = final_selected_df[final_selected_df['locationid'] == loc_id].iloc[0]
-            show_popup(full_row)
+            current_table_sel = str(event.selection.rows)
+            if current_table_sel != st.session_state[table_state_key]:
+                st.session_state[table_state_key] = current_table_sel
+                
+                selected_idx = event.selection.rows[0]
+                loc_id = table_df.iloc[selected_idx]['locationid']
+                full_row = final_selected_df[final_selected_df['locationid'] == loc_id].iloc[0]
+                show_popup(full_row)
+        else:
+            st.session_state[table_state_key] = None
 
     if not final_selected_df.empty:
         st.divider()
