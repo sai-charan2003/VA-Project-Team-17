@@ -21,3 +21,8 @@ build/
 .idea/
 .vscode/
 .DS_Store
+
+# Environment variables and sensitive data
+.env
+.env.local
+.env.*

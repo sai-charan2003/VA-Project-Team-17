@@ -6,6 +6,16 @@ import numpy as np
 from urllib.request import urlopen
 import json
 import plotly.io as pio
+import hashlib
+import google.generativeai as genai
+import os
+from dotenv import load_dotenv
+
+# Configure Gemini AI
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # Set default Plotly template to match dark theme
 pio.templates.default = "plotly_dark"
@@ -225,9 +235,143 @@ def run_billboard_allocation(base_df, total_billboards, priority_metric="priorit
     
     return regional_data, final_df, total_metric_sum
 
-def display_strategy_ui(regional_data, final_selected_df, total_billboards, filtered_df, strategy_name, selected_state, show_copd=True):
+def generate_billboard_tagline(smoking_pct, population, copd_pct, location_id, show_copd=True):
+    """
+    Generates a contextually relevant billboard tagline.
+    Attempts to use Gemini AI for creative generation, with a rule-based fallback.
+    """
+    composite = (smoking_pct * 0.5) + (copd_pct * 0.3) + (min(population / 10000, 1) * 20 * 0.2)
+    smokers_est = int(population * (smoking_pct / 100))
+
+    # Define tier for fallback and metadata
+    if composite >= 20:
+        tier, tier_color = "Critical", "#ef4444"
+    elif composite >= 14:
+        tier, tier_color = "High Priority", "#f97316"
+    elif composite >= 8:
+        tier, tier_color = "Moderate", "#eab308"
+    else:
+        tier, tier_color = "Low Risk", "#22c55e"
+
+    try:
+        model = genai.GenerativeModel('gemini-flash-lite-latest')
+        copd_line = f"- COPD Prevalence: {copd_pct:.1f}%\n        " if show_copd else ""
+        prompt = f"""
+        You are a public health marketing expert. Create a short, high-impact billboard headline and subtext for an anti-smoking campaign.
+        Target Location Data:
+        - Smoking Prevalence: {smoking_pct:.1f}%
+        {copd_line}- Adult Population: {int(population):,}
+        - Estimated Smokers: {smokers_est:,}
+        - Risk Tier: {tier}
+
+        Requirements:
+        1. Headline: Max 8 words, bold, urgent but professional.
+        2. Subtext: Max 20 words, mention at least one of the statistics provided.
+        3. Tone: Serious, health-focused, and community-centric.
+        4. Output format: Exactly like this (two lines):
+        HEADLINE: [Text]
+        SUBTEXT: [Text]
+        """
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        
+        headline = ""
+        subtext = ""
+        for line in text.split('\n'):
+            if line.startswith("HEADLINE:"):
+                headline = line.replace("HEADLINE:", "").strip()
+            elif line.startswith("SUBTEXT:"):
+                subtext = line.replace("SUBTEXT:", "").strip()
+        
+        if headline and subtext:
+            headline = headline.replace("**", "").replace("*", "")
+            subtext = subtext.replace("**", "").replace("*", "")
+            return headline, subtext, tier, tier_color, composite
+
+    except Exception as e:
+        return "AI Generation Error", f"Unable to generate tagline via Gemini API. Error: {str(e)}", tier, tier_color, composite
+
+    return "Generation Failed", "The AI model returned an unexpected response format.", tier, tier_color, composite
+
+
+def render_billboard_card(row, show_copd=True):
+    """Renders a billboard tagline card for a given location row using st.dialog."""
+    smoking_val = row['Smoking_Prevalence']
+    copd_val = row['COPD_Prevalence']
+    pop_val = row['Population (18+)']
+    loc_id = row['locationid']
+    county_name = row['countyname']
+    state_abbr = row['stateabbr']
+
+    headline, subtext, tier, tier_color, comp_score = generate_billboard_tagline(
+        smoking_val, pop_val, copd_val, loc_id, show_copd
+    )
+
+    pop_display = f"{int(pop_val):,}"
+    smoking_display = f"{smoking_val:.1f}"
+    copd_display = f"{copd_val:.1f}"
+    score_display = f"{comp_score:.1f}"
+
+    # Build stats bar items based on whether COPD is shown
+    stats_items = (
+        '<div style="flex:1;text-align:center;">'
+        f'<div style="font-size:22px;font-weight:700;color:#f97316;">{smoking_display}%</div>'
+        '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Smoking Rate</div>'
+        '</div>'
+    )
+    if show_copd:
+        stats_items += (
+            '<div style="width:1px;background:rgba(255,255,255,0.08);"></div>'
+            '<div style="flex:1;text-align:center;">'
+            f'<div style="font-size:22px;font-weight:700;color:#ef4444;">{copd_display}%</div>'
+            '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">COPD Rate</div>'
+            '</div>'
+        )
+    stats_items += (
+        '<div style="width:1px;background:rgba(255,255,255,0.08);"></div>'
+        '<div style="flex:1;text-align:center;">'
+        f'<div style="font-size:22px;font-weight:700;color:#3b82f6;">{pop_display}</div>'
+        '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Adults 18+</div>'
+        '</div>'
+        '<div style="width:1px;background:rgba(255,255,255,0.08);"></div>'
+        '<div style="flex:1;text-align:center;">'
+        f'<div style="font-size:22px;font-weight:700;color:{tier_color};">{score_display}</div>'
+        '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Risk Score</div>'
+        '</div>'
+    )
+
+    billboard_html = (
+        '<div style="'
+        'max-width:720px;margin:0 auto;border-radius:18px;overflow:hidden;'
+        'background:linear-gradient(145deg,#18181b 0%,#1e1e2e 50%,#18181b 100%);'
+        'border:1px solid rgba(255,255,255,0.08);'
+        'box-shadow:0 20px 60px rgba(0,0,0,0.5),0 0 40px rgba(234,179,8,0.05);'
+        "font-family:'Google Sans Flex',sans-serif;"
+        '">'
+        '<div style="'
+        f'padding:10px 24px;background:linear-gradient(90deg,{tier_color}22,transparent);'
+        f'border-bottom:1px solid {tier_color}33;display:flex;align-items:center;gap:10px;'
+        '">'
+        f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{tier_color};box-shadow:0 0 8px {tier_color}88;"></span>'
+        f'<span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:{tier_color};">{tier} Zone</span>'
+        f'<span style="margin-left:auto;font-size:11px;color:#71717a;letter-spacing:0.5px;">Tract {loc_id} | {county_name}, {state_abbr}</span>'
+        '</div>'
+        '<div style="padding:36px 40px 24px 40px;">'
+        f'<h2 style="font-size:28px;font-weight:800;line-height:1.2;margin:0 0 14px 0;color:#f4f4f5;letter-spacing:-0.5px;">{headline}</h2>'
+        f'<p style="font-size:15px;line-height:1.6;color:#a1a1aa;margin:0;">{subtext}</p>'
+        '</div>'
+        '<div style="display:flex;padding:18px 40px;background:rgba(0,0,0,0.3);border-top:1px solid rgba(255,255,255,0.05);gap:24px;">'
+        + stats_items +
+        '</div>'
+        '</div>'
+    )
+    return billboard_html
+
+
+def display_strategy_ui(regional_data, final_selected_df, total_billboards, filtered_df, strategy_name, selected_state, show_copd=True, map_key="strategy_map"):
     """
     Renders the consistent UI for billboard strategies.
+    Clicking a location on the map displays a generated billboard tagline card.
     """
     col_summary, col_map = st.columns([1, 2])
     
@@ -252,6 +396,7 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
                 st.metric("COPD Patients Reached", f"{int(reached_copd):,}", help="The estimated number of COPD patients reached by the proposed billboard allocation.")
                 st.caption(f"{p_copd:.2f}% of current selection risk burden")
 
+    map_event = None
     with col_map:
         st.subheader("Billboard Locations Map")
         if not final_selected_df.empty:
@@ -271,9 +416,37 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
                 size_max=18
             )
             fig_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
-            st.plotly_chart(fig_map, use_container_width=True)
+            map_event = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", key=map_key)
+            st.caption("Click on any location marker on the map to generate a billboard tagline for that area.")
         else:
             st.info("No locations selected. Adjust filters or billboard count.")
+
+    # Handle map click -> show billboard popup
+    if map_event and not final_selected_df.empty:
+        selection = map_event.get("selection", {})
+        raw_points = selection.get("points", [])
+        
+        if raw_points:
+            first_pt = raw_points[0]
+            pt_idx = first_pt.get("point_index", None)
+            trace_idx = first_pt.get("curve_number", 0)
+
+            # Reconstruct the original row from the grouped data
+            regions_in_order = final_selected_df['Region'].unique().tolist()
+            if trace_idx < len(regions_in_order):
+                target_region = regions_in_order[trace_idx]
+                region_subset = final_selected_df[final_selected_df['Region'] == target_region].reset_index(drop=True)
+                
+                if pt_idx is not None and pt_idx < len(region_subset):
+                    clicked_row = region_subset.iloc[pt_idx]
+                    
+                    @st.dialog("Billboard Preview", width="large")
+                    def show_popup(row):
+                        card_html = render_billboard_card(row, show_copd=show_copd)
+                        st.markdown(card_html, unsafe_allow_html=True)
+                        st.caption("Tagline generated based on local health data for this specific tract.")
+                    
+                    show_popup(clicked_row)
 
     st.subheader("Recommended Locations (Detailed Table)")
     if not final_selected_df.empty:
@@ -457,7 +630,7 @@ with tab2:
     reg_data_smk, final_df_smk, _ = run_billboard_allocation(filtered_df, smk_billboards, priority_metric="Estimated_Smokers")
 
     # Display UI - Explicitly hide COPD
-    display_strategy_ui(reg_data_smk, final_df_smk, smk_billboards, filtered_df, "Smoker Volume Priority", selected_state, show_copd=False)
+    display_strategy_ui(reg_data_smk, final_df_smk, smk_billboards, filtered_df, "Smoker Volume Priority", selected_state, show_copd=False, map_key="smk_map")
 
     if not final_df_smk.empty:
         st.info("**Strategy Recommendation (Smoking-Only):**")
@@ -600,7 +773,7 @@ with tab4:
     reg_data_int, final_df_int, _ = run_billboard_allocation(filtered_df, total_billboards, priority_metric="priority_score")
 
     # Display UI
-    display_strategy_ui(reg_data_int, final_df_int, total_billboards, filtered_df, "Health ROI Priority", selected_state)
+    display_strategy_ui(reg_data_int, final_df_int, total_billboards, filtered_df, "Health ROI Priority", selected_state, map_key="int_map")
 
     if not final_df_int.empty:
         st.info("**Strategy Recommendation (Integrated):**")
@@ -615,7 +788,7 @@ with tab4:
         - **Reach Optimization:** Targets tracts with the highest concentration of smokers (estimated {reached_smokers_int:,} individuals).
         - **Risk Mitigation:** Prioritizes areas with significant COPD burden (targeting {int(reached_copd_int):,} high-risk individuals).
         - **Allocation Logic:** Proportional distribution based on regional "Priority Score" (e.g., 24.4% of national risk results in 244 out of 1,000 billboards).
-        """)
+                """)
 
 # ==========================================
 # Footer & Methodology
@@ -648,6 +821,13 @@ with st.expander("Data Methodology & Calculation Definitions"):
         1. **Regional Totals:** Sum estimated smokers for each region (e.g., Midwest = 6.1M; National Total = 25M).
         2. **Compute Share:** Divide regional total by national total (e.g., 6.1M / 25M = 0.244).
         3. **Final Count:** Multiply share by billboard budget (e.g., 0.244 * 1,000 = **244 billboards**).
+
+        **AI Billboard Tagline:**
+        - Available in both Tab 2 and Tab 4 strategy views.
+        - **Composite Risk Score:** `Smoking Prevalence * 0.5 + COPD Prevalence * 0.3 + Population Density Factor * 0.2`.
+        - **Population Density Factor:** `min(Population / 10,000, 1) * 20`. Capped to normalize against extreme outliers.
+        - **Severity Tiers:** Critical (>= 20), High Priority (14-19.9), Moderate (8-13.9), Low Risk (< 8).
+        - **Tagline Selection:** Deterministic based on location ID hash to ensure consistent outputs across sessions.
         """)
 
     with m_tabs[2]:
@@ -675,3 +855,4 @@ with st.expander("Data Methodology & Calculation Definitions"):
         """)
     
     st.caption("**Data Source:** CDC PLACES (2023 release). All demographic estimates are based on adults aged 18 and older.")
+
