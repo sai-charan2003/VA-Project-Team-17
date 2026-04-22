@@ -421,6 +421,13 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
         else:
             st.info("No locations selected. Adjust filters or billboard count.")
 
+    # Define the popup dialog once so it can be used by both map and table
+    @st.dialog("Billboard Preview", width="large")
+    def show_popup(row):
+        card_html = render_billboard_card(row, show_copd=show_copd)
+        st.markdown(card_html, unsafe_allow_html=True)
+        st.caption("Tagline generated based on local health data for this specific tract.")
+
     # Handle map click -> show billboard popup
     if map_event and not final_selected_df.empty:
         selection = map_event.get("selection", {})
@@ -439,25 +446,75 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
                 
                 if pt_idx is not None and pt_idx < len(region_subset):
                     clicked_row = region_subset.iloc[pt_idx]
-                    
-                    @st.dialog("Billboard Preview", width="large")
-                    def show_popup(row):
-                        card_html = render_billboard_card(row, show_copd=show_copd)
-                        st.markdown(card_html, unsafe_allow_html=True)
-                        st.caption("Tagline generated based on local health data for this specific tract.")
-                    
                     show_popup(clicked_row)
 
     st.subheader("Recommended Locations (Detailed Table)")
+    st.caption("Tip: Select any row in the table below to generate a billboard tagline for that location.")
     if not final_selected_df.empty:
         display_cols = ['locationid', 'countyname', 'stateabbr', 'Region', 'Estimated_Smokers']
         if show_copd:
             display_cols.extend(['COPD_Prevalence', 'priority_score'])
             
-        st.dataframe(
-            final_selected_df[display_cols].sort_values(by=display_cols[-1], ascending=False),
-            use_container_width=True, hide_index=True
+        table_df = final_selected_df[display_cols].sort_values(by=display_cols[-1], ascending=False).copy()
+        
+        event = st.dataframe(
+            table_df,
+            use_container_width=True, 
+            hide_index=True,
+            on_select="rerun",
+            selection_mode="single-row",
+            key=f"table_{map_key}"
         )
+        
+        # Handle table click -> show billboard popup
+        if event and len(event.selection.rows) > 0:
+            selected_idx = event.selection.rows[0]
+            loc_id = table_df.iloc[selected_idx]['locationid']
+            full_row = final_selected_df[final_selected_df['locationid'] == loc_id].iloc[0]
+            show_popup(full_row)
+
+    if not final_selected_df.empty:
+        st.divider()
+        col_bar, col_spacer = st.columns([2, 1])
+        with col_bar:
+            st.subheader("Top Locations by Impact")
+            metric_col = "priority_score" if show_copd else "Estimated_Smokers"
+            metric_label = "Priority Score" if show_copd else "Estimated Smokers"
+            
+            # Interactive slider for chart count
+            max_available = min(len(final_selected_df), 100)
+            chart_limit = st.slider(
+                "Display Limit",
+                min_value=min(5, max_available),
+                max_value=max_available,
+                value=min(15, max_available),
+                key=f"slider_{map_key}",
+                help="Adjust the number of top-impact locations shown in the bar chart below."
+            )
+            
+            # Prepare data
+            top_n = final_selected_df.sort_values(by=metric_col, ascending=False).head(chart_limit).copy()
+            top_n['Location_Label'] = top_n['countyname'] + " (" + top_n['locationid'].astype(str) + ")"
+            
+            fig_bar = px.bar(
+                top_n,
+                x=metric_col,
+                y='Location_Label',
+                orientation='h',
+                color='Region',
+                title=f"Top {chart_limit} High-Impact Locations (by {metric_label})",
+                labels={metric_col: metric_label, 'Location_Label': 'Location'},
+                color_discrete_sequence=px.colors.qualitative.Bold,
+                height=max(400, chart_limit * 25) # Scale height with number of bars
+            )
+            fig_bar.update_layout(
+                yaxis={'categoryorder':'total ascending'},
+                margin={"l":0,"r":20,"t":40,"b":0},
+                xaxis_title=metric_label,
+                yaxis_title=None
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+            st.caption(f"Visualizing {chart_limit} locations out of {len(final_selected_df):,} total allocated billboards.")
 
 # Load Data
 county_geojson = load_county_geojson()
