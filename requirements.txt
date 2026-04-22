@@ -6,3 +6,5 @@ statsmodels
 numpy
 matplotlib
 seaborn
+google-generativeai
+python-dotenv
