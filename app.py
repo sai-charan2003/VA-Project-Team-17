@@ -576,11 +576,12 @@ if selected_county != "All":
 # ==========================================
 st.title("HealthLens: Anti-Smoking Billboard Strategy")
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "Smoking and Population", 
     "Smoking-Only Strategy", 
     "COPD vs Smoking Relation", 
-    "Strategy: Tobacco and COPD"
+    "Strategy: Tobacco and COPD",
+    "AI Design Evaluator"
 ])
 
 # ------------------------------------------
@@ -846,6 +847,51 @@ with tab4:
         - **Risk Mitigation:** Prioritizes areas with significant COPD burden (targeting {int(reached_copd_int):,} high-risk individuals).
         - **Allocation Logic:** Proportional distribution based on regional "Priority Score" (e.g., 24.4% of national risk results in 244 out of 1,000 billboards).
                 """)
+
+# ------------------------------------------
+# TAB 5: AI Design Evaluator
+# ------------------------------------------
+with tab5:
+    st.header("AI Billboard Design Evaluator")
+    st.write("Upload two billboard design concepts, and Gemini AI will evaluate which one is more effective based on public health marketing best practices.")
+    
+    col_a, col_b = st.columns(2)
+    with col_a:
+        img1 = st.file_uploader("Upload Design A", type=["png", "jpg", "jpeg"], key="design_a")
+        if img1:
+            st.image(img1, caption="Design A", use_container_width=True)
+            
+    with col_b:
+        img2 = st.file_uploader("Upload Design B", type=["png", "jpg", "jpeg"], key="design_b")
+        if img2:
+            st.image(img2, caption="Design B", use_container_width=True)
+            
+    if img1 and img2:
+        st.divider()
+        if st.button("Evaluate Designs with AI", use_container_width=True):
+            with st.spinner("Gemini is analyzing the designs..."):
+                try:
+                    from PIL import Image
+                    image_a = Image.open(img1)
+                    image_b = Image.open(img2)
+                    
+                    model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
+                    prompt = """
+                    You are an expert public health marketing consultant. I have provided two images of anti-smoking billboard designs (Image 1 is Design A, Image 2 is Design B).
+                    
+                    Please evaluate both designs based on:
+                    1. **Visual Impact and Readability**: Are the colors, fonts, and layout effective for a billboard?
+                    2. **Emotional Resonance**: Which one evokes a stronger response?
+                    3. **Clarity**: Is the public health message instantly understandable?
+                    
+                    Compare the two, highlight their strengths and weaknesses, and firmly declare which design is the **best overall** for an anti-smoking campaign. Explain exactly why.
+                    """
+                    response = model.generate_content([prompt, image_a, image_b])
+                    
+                    st.subheader("AI Evaluation Results")
+                    st.markdown(response.text)
+                except Exception as e:
+                    st.error(f"An error occurred during AI evaluation: {e}")
 
 # ==========================================
 # Footer & Methodology
