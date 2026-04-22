@@ -710,18 +710,7 @@ with tab2:
     # Display UI - Explicitly hide COPD
     display_strategy_ui(reg_data_smk, final_df_smk, smk_billboards, filtered_df, "Smoker Volume Priority", selected_state, show_copd=False, map_key="smk_map")
 
-    if not final_df_smk.empty:
-        st.info("**Strategy Recommendation (Smoking-Only):**")
-        top_reg_smk = reg_data_smk.loc[reg_data_smk['billboards'].idxmax(), 'Region'] if not reg_data_smk.empty else "N/A"
-        reached_smokers_smk = final_df_smk['Estimated_Smokers'].sum()
-        st.markdown(f"""
-        This strategy focuses exclusively on high-volume environments. It distributes **{smk_billboards} billboards** primarily based on population density and smoking prevalence.
-        
-        - **Primary Focus:** High-density smoking areas in the **{top_reg_smk}**.
-        - **Projected Impact:** Directly visible to an estimated **{reached_smokers_smk:,}** smokers.
-        - **Allocation Logic:** Billboards are proportional to regional smoker volume (e.g., a region with 24.4% of total smokers receives 244 out of 1,000 billboards).
-        - **Advantage:** Simplest implementation for general awareness campaigns.
-        """)
+
 
 
 # ------------------------------------------
@@ -853,20 +842,7 @@ with tab4:
     # Display UI
     display_strategy_ui(reg_data_int, final_df_int, total_billboards, filtered_df, "Health ROI Priority", selected_state, map_key="int_map")
 
-    if not final_df_int.empty:
-        st.info("**Strategy Recommendation (Integrated):**")
-        top_reg_int = reg_data_int.loc[reg_data_int['billboards'].idxmax(), 'Region'] if not reg_data_int.empty else "N/A"
-        reached_smokers_int = final_df_int['Estimated_Smokers'].sum()
-        reached_copd_int = (final_df_int['Population (18+)'] * (final_df_int['COPD_Prevalence'] / 100)).sum()
-        
-        st.markdown(f"""
-        This strategy distributes **{total_billboards} billboards** using an ROI model that mitigates clinical risk.
-        
-        - **Primary Focus:** High disease-burden areas in the **{top_reg_int}**.
-        - **Reach Optimization:** Targets tracts with the highest concentration of smokers (estimated {reached_smokers_int:,} individuals).
-        - **Risk Mitigation:** Prioritizes areas with significant COPD burden (targeting {int(reached_copd_int):,} high-risk individuals).
-        - **Allocation Logic:** Proportional distribution based on regional "Priority Score" (e.g., 24.4% of national risk results in 244 out of 1,000 billboards).
-                """)
+
 
 # ------------------------------------------
 # TAB 5: AI Design Evaluator
