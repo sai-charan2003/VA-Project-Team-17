@@ -38,7 +38,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@8..144,100..1000&display=swap');
 
-    /* Apply to main app container and standard text elements */
+    /* Apply font to main app container and standard text elements */
     .stApp, .stApp p, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6, .stApp li, .stApp label {
         font-family: 'Google Sans Flex', sans-serif !important;
     }
@@ -53,23 +53,13 @@ st.markdown("""
         font-variation-settings: "wght" 700, "opsz" 14;
     }
 
-    /* Custom hover effects for interactive elements */
-    .stSelectbox:hover, .stSlider:hover, .stNumberInput:hover, .stRadio:hover {
-        border-color: #e4e4e7 !important;
-        transition: all 0.3s ease;
-    }
-
     /* Premium card-like feel for sidebar */
     [data-testid="stSidebar"] {
-        background-color: #09090b !important;
-        border-right: 1px solid #1e1e2e;
+        border-right: 1px solid rgba(128, 128, 128, 0.1);
     }
 
     /* Button hover state */
     .stButton>button:hover {
-        border-color: #f4f4f5 !important;
-        color: #f4f4f5 !important;
-        background-color: rgba(255, 255, 255, 0.05) !important;
         transform: translateY(-1px);
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
@@ -312,55 +302,55 @@ def render_billboard_card(row, show_copd=True):
     copd_display = f"{copd_val:.1f}"
     score_display = f"{comp_score:.1f}"
 
-    # Build stats bar items based on whether COPD is shown
+    # Build stats bar items
     stats_items = (
         '<div style="flex:1;text-align:center;">'
         f'<div style="font-size:22px;font-weight:700;color:#f97316;">{smoking_display}%</div>'
-        '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Smoking Rate</div>'
+        '<div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Smoking Rate</div>'
         '</div>'
     )
     if show_copd:
         stats_items += (
-            '<div style="width:1px;background:rgba(255,255,255,0.08);"></div>'
+            '<div style="width:1px;background:rgba(128,128,128,0.2);"></div>'
             '<div style="flex:1;text-align:center;">'
             f'<div style="font-size:22px;font-weight:700;color:#ef4444;">{copd_display}%</div>'
-            '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">COPD Rate</div>'
+            '<div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">COPD Rate</div>'
             '</div>'
         )
     stats_items += (
-        '<div style="width:1px;background:rgba(255,255,255,0.08);"></div>'
+        '<div style="width:1px;background:rgba(128,128,128,0.2);"></div>'
         '<div style="flex:1;text-align:center;">'
         f'<div style="font-size:22px;font-weight:700;color:#3b82f6;">{pop_display}</div>'
-        '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Adults 18+</div>'
+        '<div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Adults 18+</div>'
         '</div>'
-        '<div style="width:1px;background:rgba(255,255,255,0.08);"></div>'
+        '<div style="width:1px;background:rgba(128,128,128,0.2);"></div>'
         '<div style="flex:1;text-align:center;">'
         f'<div style="font-size:22px;font-weight:700;color:{tier_color};">{score_display}</div>'
-        '<div style="font-size:11px;color:#71717a;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Risk Score</div>'
+        '<div style="font-size:11px;opacity:0.6;text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Risk Score</div>'
         '</div>'
     )
 
     billboard_html = (
         '<div style="'
         'max-width:720px;margin:0 auto;border-radius:18px;overflow:hidden;'
-        'background:linear-gradient(145deg,#18181b 0%,#1e1e2e 50%,#18181b 100%);'
-        'border:1px solid rgba(255,255,255,0.08);'
-        'box-shadow:0 20px 60px rgba(0,0,0,0.5),0 0 40px rgba(234,179,8,0.05);'
+        'background:rgba(128,128,128,0.05);'
+        'border:1px solid rgba(128,128,128,0.1);'
+        'box-shadow:0 10px 30px rgba(0,0,0,0.1);'
         "font-family:'Google Sans Flex',sans-serif;"
         '">'
         '<div style="'
-        f'padding:10px 24px;background:linear-gradient(90deg,{tier_color}22,transparent);'
-        f'border-bottom:1px solid {tier_color}33;display:flex;align-items:center;gap:10px;'
+        f'padding:10px 24px;background:linear-gradient(90deg,{tier_color}11,transparent);'
+        f'border-bottom:1px solid rgba(128,128,128,0.1);display:flex;align-items:center;gap:10px;'
         '">'
-        f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{tier_color};box-shadow:0 0 8px {tier_color}88;"></span>'
+        f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{tier_color};"></span>'
         f'<span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:{tier_color};">{tier} Zone</span>'
-        f'<span style="margin-left:auto;font-size:11px;color:#71717a;letter-spacing:0.5px;">Tract {loc_id} | {county_name}, {state_abbr}</span>'
+        f'<span style="margin-left:auto;font-size:11px;opacity:0.6;letter-spacing:0.5px;">Tract {loc_id} | {county_name}, {state_abbr}</span>'
         '</div>'
         '<div style="padding:36px 40px 24px 40px;">'
-        f'<h2 style="font-size:28px;font-weight:800;line-height:1.2;margin:0 0 14px 0;color:#f4f4f5;letter-spacing:-0.5px;">{headline}</h2>'
-        f'<p style="font-size:15px;line-height:1.6;color:#a1a1aa;margin:0;">{subtext}</p>'
+        f'<h2 style="font-size:28px;font-weight:800;line-height:1.2;margin:0 0 14px 0;letter-spacing:-0.5px;">{headline}</h2>'
+        f'<p style="font-size:15px;line-height:1.6;opacity:0.8;margin:0;">{subtext}</p>'
         '</div>'
-        '<div style="display:flex;padding:18px 40px;background:rgba(0,0,0,0.3);border-top:1px solid rgba(255,255,255,0.05);gap:24px;">'
+        '<div style="display:flex;padding:18px 40px;background:rgba(128,128,128,0.03);border-top:1px solid rgba(128,128,128,0.1);gap:24px;">'
         + stats_items +
         '</div>'
         '</div>'
@@ -416,7 +406,7 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
                 size_max=18
             )
             fig_map.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
-            map_event = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", key=map_key)
+            map_event = st.plotly_chart(fig_map, use_container_width=True, on_select="rerun", key=map_key, theme="streamlit")
             st.caption("Click on any location marker on the map to generate a billboard tagline for that area.")
         else:
             st.info("No locations selected. Adjust filters or billboard count.")
@@ -533,7 +523,7 @@ def display_strategy_ui(regional_data, final_selected_df, total_billboards, filt
                 xaxis_title=metric_label,
                 yaxis_title=None
             )
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, use_container_width=True, theme="streamlit")
             st.caption(f"Visualizing {chart_limit} locations out of {len(final_selected_df):,} total allocated billboards.")
 
 # Load Data
@@ -659,7 +649,7 @@ with tab1:
         f_map = px.density_mapbox(
             t_df, lat="lat", lon="lon", z="Smoking_Prevalence", radius=10,
             center=dict(lat=t_df['lat'].mean(), lon=t_df['lon'].mean()) if not t_df.empty else None,
-            zoom=4 if selected_state == "All" else 7, mapbox_style="carto-positron",
+            zoom=4 if selected_state == "All" else 7, mapbox_style=curr_theme["mapbox_style"],
             color_continuous_scale="YlOrRd", title="Neighborhood Precision Heatmap (Tract Level)",
             hover_name="locationid", hover_data=["countyname", "Smoking_Prevalence", "Estimated_Smokers"]
         )
@@ -668,7 +658,7 @@ with tab1:
         d_lbl = "Tract"
         s_col = 'Smoking_Prevalence'
 
-    st.plotly_chart(f_map, use_container_width=True)
+    st.plotly_chart(f_map, use_container_width=True, theme="streamlit")
 
     # Coordinated Ranking and Data
     st.divider()
@@ -741,7 +731,7 @@ with tab3:
     )
     fig_scatter.update_coloraxes(colorbar_title="Smoking (%)")
     fig_scatter.update_layout(legend_title_text="")
-    st.plotly_chart(fig_scatter, use_container_width=True)
+    st.plotly_chart(fig_scatter, use_container_width=True, theme="streamlit")
     st.caption("Each circle is a neighborhood tract. Circle size = population; color = smoking prevalence. The trendline shows the overall relationship.")
 
     st.subheader("COPD Burden Heat Map (Neighborhood Level)")
@@ -760,7 +750,7 @@ with tab3:
         title="COPD Hotspots"
     )
     fig_copd_heat.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
-    st.plotly_chart(fig_copd_heat, use_container_width=True)
+    st.plotly_chart(fig_copd_heat, use_container_width=True, theme="streamlit")
 
     st.subheader("Overlap Heat Map: Smoking + COPD (Co-Occurrence)")
     st.info("Darker regions indicate neighborhoods with both high smoking and high COPD prevalence.")
@@ -781,7 +771,7 @@ with tab3:
         title="Co-Occurrence Hotspots (Smoking x COPD)"
     )
     fig_overlap_heat.update_layout(margin={"r":0,"t":40,"l":0,"b":0})
-    st.plotly_chart(fig_overlap_heat, use_container_width=True)
+    st.plotly_chart(fig_overlap_heat, use_container_width=True, theme="streamlit")
 
     st.subheader("High-Risk County Targeting")
     # County aggregation for COPD risk
@@ -824,7 +814,7 @@ with tab3:
         labels={'Risk_Adjusted_Reach': 'Risk-Adjusted Reach', 'county_label': 'County'}
     )
     fig_risk_bar.update_layout(yaxis={'categoryorder': 'total ascending'})
-    st.plotly_chart(fig_risk_bar, use_container_width=True)
+    st.plotly_chart(fig_risk_bar, use_container_width=True, theme="streamlit")
 
 
 # ------------------------------------------
