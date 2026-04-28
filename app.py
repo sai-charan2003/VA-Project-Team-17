@@ -649,7 +649,7 @@ with tab1:
         f_map = px.density_mapbox(
             t_df, lat="lat", lon="lon", z="Smoking_Prevalence", radius=10,
             center=dict(lat=t_df['lat'].mean(), lon=t_df['lon'].mean()) if not t_df.empty else None,
-            zoom=4 if selected_state == "All" else 7, mapbox_style=curr_theme["mapbox_style"],
+            zoom=4 if selected_state == "All" else 7, mapbox_style="carto-positron",
             color_continuous_scale="YlOrRd", title="Neighborhood Precision Heatmap (Tract Level)",
             hover_name="locationid", hover_data=["countyname", "Smoking_Prevalence", "Estimated_Smokers"]
         )
